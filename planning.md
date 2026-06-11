@@ -181,10 +181,7 @@ Planning Loop ──────────────────────
 **Milestone 3 — Individual tool implementations:**
 
 - **`search_listings()`**
-  - *AI tool:* Claude Code
-  - *Input to AI:* The Tool 1 spec from this file (description, size, max_price parameters; return type; failure mode), plus the schema of the listings dataset (fields: id, title, description, category, style_tags, size, condition, price, colors, brand, platform).
-  - *Expected output:* A Python function that loads the listings dataset via `load_listings()`, filters by size and max_price (exact/case-insensitive match), ranks remaining items by semantic similarity to `description` using keyword overlap or embedding similarity, and returns a sorted list of matching dicts (empty list on no match).
-  - *Verification:* Run 3 manual test queries — (1) a query with clear matches, (2) a query with a price filter that eliminates some results, (3) a query with no matches — and confirm the return values and sort order match the spec before moving on.
+  - I plan to let Claude Code develop a set of tests given the the Tool 1 specs and diagram from this file. I'll verify my code's output with 3 manual test queries — (1) a query with clear matches, (2) a query with a price filter that eliminates some results, (3) a query with no matches — and confirm the return values and sort order match the spec before moving on.
 
 - **`suggest_outfit()`**
   - *AI tool:* Claude Code
