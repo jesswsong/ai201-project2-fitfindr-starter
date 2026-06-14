@@ -18,7 +18,14 @@ Usage (once implemented):
     print(result["error"])   # None on success
 """
 
-from tools import search_listings, suggest_outfit, create_fit_card
+from tools import search_listings, suggest_outfit, create_fit_card, _get_groq_client
+from dotenv import load_dotenv
+import json
+
+from utils.data_loader import load_listings
+
+load_dotenv()
+
 
 
 # ── session state ─────────────────────────────────────────────────────────────
@@ -46,7 +53,23 @@ def _new_session(query: str, wardrobe: dict) -> dict:
 
 
 # ── planning loop ─────────────────────────────────────────────────────────────
-
+def parse_query(query: str) -> dict:
+    client = _get_groq_client()
+    prompt = (
+        "Extract search parameters from this thrift shopping query. "
+        "Reply with ONLY a JSON object with keys: description (str), size (str or null), max_price (float or null).\n\n"
+        f"Query: {query}"
+    )
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.0,
+    )
+    
+    user_query = json.loads(response.choices[0].message.content)
+    print(user_query)
+    return user_query
+    
 def run_agent(query: str, wardrobe: dict) -> dict:
     """
     Main agent entry point. Runs the FitFindr planning loop for a single
@@ -92,9 +115,27 @@ def run_agent(query: str, wardrobe: dict) -> dict:
     Before writing code, complete the Planning Loop and State Management sections
     of planning.md — your implementation should match what you described there.
     """
-    # TODO: implement the planning loop
     session = _new_session(query, wardrobe)
-    session["error"] = "Planning loop not yet implemented."
+    # session["error"] = "Planning loop not yet implemented."
+    session["parsed"] = parse_query(session["query"])
+    
+    parsed = session["parsed"]
+    matches = search_listings(parsed["description"], size=parsed.get("size"), max_price=parsed.get("max_price"))
+    if len(matches) == 0:
+        session["error"] = "Unfortunately the database currently doesn't contain a good match. Try using a different query."
+        return session
+    else:
+        session["search_results"] = matches
+        
+    session["selected_item"] = matches[0]
+    
+    session["outfit_suggestion"] = suggest_outfit(session["selected_item"], wardrobe)
+    
+    if len(session["outfit_suggestion"]) < 10:
+        session["fit_card"] = "There isn't enough information on an outfit with this piece."
+    else:
+        session["fit_card"] = create_fit_card(session["outfit_suggestion"], session['selected_item'])
+    
     return session
 
 

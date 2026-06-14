@@ -16,9 +16,24 @@ import gradio as gr
 
 from agent import run_agent
 from utils.data_loader import get_example_wardrobe, get_empty_wardrobe
+from tools import _get_groq_client
 
 
 # ── query handler ─────────────────────────────────────────────────────────────
+
+def generate_item(item):
+    client = _get_groq_client()
+    prompt = (
+        "Convert the following listing into a readable product description "
+        f"Query: {item}"
+    )
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.0,
+    )
+    
+    return response.choices[0].message.content
 
 def handle_query(user_query: str, wardrobe_choice: str) -> tuple[str, str, str]:
     """
@@ -43,8 +58,19 @@ def handle_query(user_query: str, wardrobe_choice: str) -> tuple[str, str, str]:
            string and return it along with session["outfit_suggestion"] and
            session["fit_card"].
     """
-    # TODO: implement this function
-    return "Agent not yet implemented.", "", ""
+    if len(user_query) < 1:
+        return "Please enter a query", "Require valid query to generate", "Require valid query to generate"
+    
+    wardrobe = get_example_wardrobe() \
+               if wardrobe_choice == 'Example wardrobe' else get_empty_wardrobe()
+                
+    session = run_agent(user_query, wardrobe)
+    
+    if session["error"] is not None:
+        return session["error"], "", ""
+    else:
+        return generate_item(session["selected_item"]), session["outfit_suggestion"], session["fit_card"]
+
 
 
 # ── interface ─────────────────────────────────────────────────────────────────

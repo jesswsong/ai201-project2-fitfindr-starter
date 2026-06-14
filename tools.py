@@ -210,7 +210,7 @@ def create_fit_card(outfit: str, new_item: dict) -> str:
     Before writing code, fill in the Tool 3 section of planning.md.
     """
     if not outfit or not outfit.strip():
-        return "There isn't enough information on an outfit with this piece."
+        return "There isn‘t enough information of a suggested outfit for this piece to create the fit card."
 
     client = _get_groq_client()
     prompt = (
