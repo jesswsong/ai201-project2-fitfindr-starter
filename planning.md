@@ -152,7 +152,7 @@ Planning Loop ──────────────────────
     │       │                                            │
     └─► create_fit_card(outfit_suggestion, selected_item)│
             │ outfit_suggestion= ''/ None / incomplete   │
-            ├──► [ERROR] "Not enough info" → return      │
+            ├──► fit_card = descriptive error message    │
             │                                            │
             │ outfit_suggestion= "..."                   │
             ▼ 
