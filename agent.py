@@ -18,11 +18,10 @@ Usage (once implemented):
     print(result["error"])   # None on success
 """
 
-from tools import search_listings, suggest_outfit, create_fit_card, _get_groq_client
+from tools import search_listings, suggest_outfit, create_fit_card, compare_price, _get_groq_client
 from dotenv import load_dotenv
+from utils.profile import load_profile, save_profile, profile_exists
 import json
-
-from utils.data_loader import load_listings
 
 load_dotenv()
 
@@ -48,6 +47,8 @@ def _new_session(query: str, wardrobe: dict) -> dict:
         "wardrobe": wardrobe,        # user's wardrobe dict
         "outfit_suggestion": None,   # string returned by suggest_outfit
         "fit_card": None,            # string returned by create_fit_card
+        "price_comparison": None,    # dict returned by compare_price
+        "search_note": None,         # set if retry logic loosened the constraints
         "error": None,               # set if the interaction ended early
     }
 
@@ -115,27 +116,64 @@ def run_agent(query: str, wardrobe: dict) -> dict:
     Before writing code, complete the Planning Loop and State Management sections
     of planning.md — your implementation should match what you described there.
     """
+    # ── Load saved profile if no wardrobe was passed ─────────────────────────
+    if not wardrobe.get("items") and profile_exists():
+        profile = load_profile()
+        wardrobe = profile["wardrobe"]
+        print(f"Loaded saved profile (last saved: {profile.get('saved_at', 'unknown')})")
+
     session = _new_session(query, wardrobe)
-    # session["error"] = "Planning loop not yet implemented."
     session["parsed"] = parse_query(session["query"])
-    
+
     parsed = session["parsed"]
-    matches = search_listings(parsed["description"], size=parsed.get("size"), max_price=parsed.get("max_price"))
-    if len(matches) == 0:
-        session["error"] = "Unfortunately the database currently doesn't contain a good match. Try using a different query."
+
+    # ── Search with retry / fallback logic ───────────────────────────────────
+    matches = search_listings(
+        parsed["description"],
+        size=parsed.get("size"),
+        max_price=parsed.get("max_price"),
+    )
+
+    if not matches and parsed.get("size"):
+        # Retry 1: drop size filter
+        matches = search_listings(parsed["description"], size=None, max_price=parsed.get("max_price"))
+        if matches:
+            session["search_note"] = (
+                f"No results found for size {parsed['size']} — "
+                "showing results for all sizes instead."
+            )
+
+    if not matches and parsed.get("max_price"):
+        # Retry 2: drop price cap too
+        matches = search_listings(parsed["description"], size=None, max_price=None)
+        if matches:
+            session["search_note"] = (
+                f"No results found for size {parsed.get('size') or 'any'} under "
+                f"${parsed['max_price']} — showing results without filters."
+            )
+
+    if not matches:
+        session["error"] = (
+            "Unfortunately the database currently doesn't contain a good match. "
+            "Try using different keywords."
+        )
         return session
-    else:
-        session["search_results"] = matches
-        
+
+    session["search_results"] = matches
     session["selected_item"] = matches[0]
-    
+
+    # ── Price comparison ──────────────────────────────────────────────────────
+    session["price_comparison"] = compare_price(session["selected_item"])
+
+    # ── Outfit suggestion ─────────────────────────────────────────────────────
     session["outfit_suggestion"] = suggest_outfit(session["selected_item"], wardrobe)
-    
+
+    # ── Fit card ──────────────────────────────────────────────────────────────
     if len(session["outfit_suggestion"]) < 10:
         session["fit_card"] = "There isn't enough information on an outfit with this piece."
     else:
-        session["fit_card"] = create_fit_card(session["outfit_suggestion"], session['selected_item'])
-    
+        session["fit_card"] = create_fit_card(session["outfit_suggestion"], session["selected_item"])
+
     return session
 
 

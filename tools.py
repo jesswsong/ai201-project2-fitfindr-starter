@@ -1,15 +1,14 @@
 """
 tools.py
 
-The three required FitFindr tools. Each tool is a standalone function that
+The FitFindr tools. Each tool is a standalone function that
 can be called and tested independently before being wired into the agent loop.
-
-Complete and test each tool before moving to agent.py.
 
 Tools:
     search_listings(description, size, max_price)  → list[dict]
     suggest_outfit(new_item, wardrobe)              → str
     create_fit_card(outfit, new_item)               → str
+    compare_price(item)                             → dict
 """
 
 from __future__ import annotations
@@ -230,3 +229,82 @@ def create_fit_card(outfit: str, new_item: dict) -> str:
         temperature=0.9,
     )
     return response.choices[0].message.content
+
+
+# ── Tool 4: compare_price ─────────────────────────────────────────────────────
+
+def compare_price(item: dict) -> dict:
+    """
+    Estimate whether an item's price is fair by comparing it against
+    listings in the same category from the dataset.
+
+    Args:
+        item: A listing dict (e.g. from search_listings).
+
+    Returns:
+        A dict with keys:
+          - verdict (str):      "great deal", "fair", or "overpriced"
+          - item_price (float): the item's price
+          - avg_price (float):  average price of comparable listings
+          - min_price (float):  cheapest comparable
+          - max_price (float):  most expensive comparable
+          - comparables (int):  number of listings used for comparison
+          - note (str):         one-sentence human-readable explanation
+    """
+    import re
+
+    listings = load_listings()
+    category = item.get("category", "")
+    item_price = item.get("price", 0.0)
+    item_tags = set(item.get("style_tags", []))
+
+    # Comparables: same category, at least one overlapping style tag, exclude self
+    comparables = [
+        l for l in listings
+        if l.get("category") == category
+        and l.get("id") != item.get("id")
+        and item_tags & set(l.get("style_tags", []))
+    ]
+
+    # Fall back to same category only if no tag overlap found
+    if not comparables:
+        comparables = [
+            l for l in listings
+            if l.get("category") == category and l.get("id") != item.get("id")
+        ]
+
+    if not comparables:
+        return {
+            "verdict": "unknown",
+            "item_price": item_price,
+            "avg_price": None,
+            "min_price": None,
+            "max_price": None,
+            "comparables": 0,
+            "note": "Not enough similar listings in the dataset to compare.",
+        }
+
+    prices = [l["price"] for l in comparables]
+    avg = round(sum(prices) / len(prices), 2)
+    low = min(prices)
+    high = max(prices)
+
+    if item_price <= avg * 0.8:
+        verdict = "great deal"
+        note = f"At ${item_price}, this is {round((avg - item_price) / avg * 100)}% below the ${avg} average for similar {category}."
+    elif item_price <= avg * 1.1:
+        verdict = "fair"
+        note = f"At ${item_price}, this is priced close to the ${avg} average for similar {category}."
+    else:
+        verdict = "overpriced"
+        note = f"At ${item_price}, this is {round((item_price - avg) / avg * 100)}% above the ${avg} average for similar {category}."
+
+    return {
+        "verdict": verdict,
+        "item_price": item_price,
+        "avg_price": avg,
+        "min_price": low,
+        "max_price": high,
+        "comparables": len(comparables),
+        "note": note,
+    }
